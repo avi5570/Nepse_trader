@@ -9,6 +9,7 @@
   <div *ngIf="message" class="result">
     <h2>{{ message.title }}</h2>
     <p>{{ message.text }}</p>
+    <p><strong>Fetched count:</strong> {{ message.count }}</p>
   </div>
 
   <div *ngIf="error" class="error">

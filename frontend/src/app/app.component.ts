@@ -4,6 +4,7 @@ import { Component } from '@angular/core';
 interface ApiMessage {
   title: string;
   text: string;
+  count: number;
 }
 
 @Component({
@@ -27,7 +28,7 @@ export class AppComponent {
           this.message = data;
           this.loading = false;
         },
-        error: err => {
+        error: () => {
           this.error = 'Unable to connect to backend. Is the API running?';
           this.loading = false;
         }

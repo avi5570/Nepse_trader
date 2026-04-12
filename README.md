@@ -43,5 +43,7 @@ This is a minimal web application using Python FastAPI for the backend and Angul
 
 ## Notes
 
-- The frontend fetches a message from the Python backend using a simple REST API.
+- The frontend fetches a message from the Python backend using a REST API.
+- Each button click increments a counter stored in PostgreSQL.
 - CORS is enabled for `http://localhost:4200`.
+- Docker Compose now includes a `db` PostgreSQL service for persistence.
