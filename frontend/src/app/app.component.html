@@ -1,0 +1,17 @@
+<div class="app-container">
+  <h1>Nepse Trader</h1>
+  <p>Python backend + Angular frontend demo.</p>
+
+  <button (click)="fetchMessage()" [disabled]="loading">
+    {{ loading ? 'Loading...' : 'Fetch Backend Message' }}
+  </button>
+
+  <div *ngIf="message" class="result">
+    <h2>{{ message.title }}</h2>
+    <p>{{ message.text }}</p>
+  </div>
+
+  <div *ngIf="error" class="error">
+    {{ error }}
+  </div>
+</div>

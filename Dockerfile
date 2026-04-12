@@ -1,4 +1,7 @@
-FROM python
+FROM python:3.12-slim
 WORKDIR /app
-COPY . /app
-CMD ["python3", "app.py"]
+COPY requirements.txt /app
+RUN python -m pip install --no-cache-dir -r requirements.txt
+COPY app.py /app
+EXPOSE 8000
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

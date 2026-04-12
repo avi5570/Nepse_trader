@@ -1,0 +1,28 @@
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f0f2f5;
+}
+
+.app-container {
+  max-width: 760px;
+  margin: 48px auto;
+  padding: 24px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.08);
+}
+
+button {
+  margin-top: 16px;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 8px;
+  background: #1976d2;
+  color: white;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #0f5bb5;
+}
