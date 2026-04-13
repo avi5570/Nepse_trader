@@ -7,6 +7,13 @@ interface ApiMessage {
   count: number;
 }
 
+interface UploadResponse {
+  message: string;
+  files_processed: number;
+  records_inserted: number;
+  records_updated: number;
+}
+
 @Component({
   selector: 'app-root',
   templateUrl: './app.component.html',
@@ -17,6 +24,11 @@ export class AppComponent implements OnInit {
   loading = false;
   error = '';
   isAuthenticated = false;
+
+  selectedFiles: File[] = [];
+  uploading = false;
+  uploadResult: UploadResponse | null = null;
+  uploadError = '';
 
   constructor(private http: HttpClient) {}
 
@@ -77,11 +89,58 @@ export class AppComponent implements OnInit {
       });
   }
 
+  onFileSelected(event: any) {
+    this.selectedFiles = Array.from(event.target.files);
+    this.uploadResult = null;
+    this.uploadError = '';
+  }
+
+  uploadFiles() {
+    if (this.selectedFiles.length === 0) {
+      return;
+    }
+
+    this.uploading = true;
+    this.uploadError = '';
+    this.uploadResult = null;
+
+    const formData = new FormData();
+    this.selectedFiles.forEach(file => {
+      formData.append('files', file);
+    });
+
+    this.http.post<UploadResponse>('http://localhost:8000/upload-csv', formData, {
+      headers: this.getHeaders()
+    }).subscribe({
+      next: (result) => {
+        this.uploadResult = result;
+        this.uploading = false;
+        this.selectedFiles = [];
+        // Clear the file input
+        const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+        if (fileInput) {
+          fileInput.value = '';
+        }
+      },
+      error: (error) => {
+        if (error.status === 401) {
+          this.logout();
+        } else {
+          this.uploadError = error.error?.detail || 'Upload failed. Please try again.';
+          this.uploading = false;
+        }
+      }
+    });
+  }
+
   logout() {
     localStorage.removeItem('access_token');
     this.isAuthenticated = false;
     this.message = null;
     this.error = '';
+    this.selectedFiles = [];
+    this.uploadResult = null;
+    this.uploadError = '';
     // Redirect to login page
     window.location.href = 'http://localhost:8000/login';
   }

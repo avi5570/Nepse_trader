@@ -1,12 +1,16 @@
 import os
+from datetime import datetime
+from typing import List
+import csv
+import io
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, File, HTTPException, status, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from passlib.context import CryptContext
 from pydantic import BaseModel
-from sqlalchemy import Column, Integer, String, create_engine, select
+from sqlalchemy import Column, Integer, String, Float, DateTime, create_engine, select, UniqueConstraint
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session, sessionmaker
@@ -47,6 +51,30 @@ class User(Base):
     hashed_password = Column(String(128), nullable=False)
 
 
+class StockData(Base):
+    __tablename__ = "stock_data"
+
+    id = Column(Integer, primary_key=True, index=True)
+    symbol = Column(String(50), nullable=False, index=True)
+    published_date = Column(DateTime, nullable=False)
+    open = Column(Float, nullable=False)
+    high = Column(Float, nullable=False)
+    low = Column(Float, nullable=False)
+    close = Column(Float, nullable=False)
+    per_change = Column(Float, nullable=True)
+    traded_quantity = Column(Float, nullable=True)
+    traded_amount = Column(Float, nullable=True)
+    status = Column(String(20), nullable=True)
+    updated_by = Column(String(50), nullable=False)
+    updated_date = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    # Unique constraint on symbol and published_date combination
+    __table_args__ = (
+        UniqueConstraint('symbol', 'published_date', name='unique_symbol_date'),
+        {'extend_existing': True},
+    )
+
+
 class MessageResponse(BaseModel):
     title: str
     text: str
@@ -61,6 +89,32 @@ class LoginRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str
+
+
+class StockDataModel(BaseModel):
+    id: int
+    symbol: str
+    published_date: datetime
+    open: float
+    high: float
+    low: float
+    close: float
+    per_change: float | None
+    traded_quantity: float | None
+    traded_amount: float | None
+    status: str | None
+    updated_by: str
+    updated_date: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class UploadResponse(BaseModel):
+    message: str
+    files_processed: int
+    records_inserted: int
+    records_updated: int
 
 
 app = FastAPI(title="Nepse Trader API")
@@ -389,6 +443,104 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
         )
     access_token = create_access_token(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+@app.post("/upload-csv", response_model=UploadResponse)
+async def upload_csv_files(
+    files: List[UploadFile] = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    files_processed = 0
+    records_inserted = 0
+    records_updated = 0
+
+    for file in files:
+        if not file.filename.lower().endswith('.csv'):
+            continue
+
+        # Extract symbol from filename (remove .csv extension)
+        symbol = file.filename.rsplit('.', 1)[0]
+
+        # Read CSV content
+        content = await file.read()
+        csv_content = content.decode('utf-8')
+
+        # Parse CSV
+        csv_reader = csv.DictReader(io.StringIO(csv_content))
+
+        for row in csv_reader:
+            try:
+                # Parse the row data
+                published_date_str = row.get('published_date') or row.get('date') or row.get('Date')
+                if not published_date_str:
+                    continue
+
+                # Try different date formats
+                published_date = None
+                for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y', '%Y/%m/%d %H:%M:%S']:
+                    try:
+                        published_date = datetime.strptime(published_date_str, fmt)
+                        break
+                    except ValueError:
+                        continue
+
+                if not published_date:
+                    continue
+
+                # Check if record already exists
+                existing_record = db.execute(
+                    select(StockData).where(
+                        StockData.symbol == symbol,
+                        StockData.published_date == published_date
+                    )
+                ).scalars().first()
+
+                if existing_record:
+                    # Update existing record
+                    existing_record.open = float(row.get('open', 0) or 0)
+                    existing_record.high = float(row.get('high', 0) or 0)
+                    existing_record.low = float(row.get('low', 0) or 0)
+                    existing_record.close = float(row.get('close', 0) or 0)
+                    existing_record.per_change = float(row.get('per_change') or row.get('change') or 0) if row.get('per_change') or row.get('change') else None
+                    existing_record.traded_quantity = float(row.get('traded_quantity') or row.get('quantity') or 0) if row.get('traded_quantity') or row.get('quantity') else None
+                    existing_record.traded_amount = float(row.get('traded_amount') or row.get('amount') or 0) if row.get('traded_amount') or row.get('amount') else None
+                    existing_record.status = row.get('status')
+                    existing_record.updated_by = current_user.username
+                    existing_record.updated_date = datetime.utcnow()
+                    records_updated += 1
+                else:
+                    # Create new record
+                    stock_data = StockData(
+                        symbol=symbol,
+                        published_date=published_date,
+                        open=float(row.get('open', 0) or 0),
+                        high=float(row.get('high', 0) or 0),
+                        low=float(row.get('low', 0) or 0),
+                        close=float(row.get('close', 0) or 0),
+                        per_change=float(row.get('per_change') or row.get('change') or 0) if row.get('per_change') or row.get('change') else None,
+                        traded_quantity=float(row.get('traded_quantity') or row.get('quantity') or 0) if row.get('traded_quantity') or row.get('quantity') else None,
+                        traded_amount=float(row.get('traded_amount') or row.get('amount') or 0) if row.get('traded_amount') or row.get('amount') else None,
+                        status=row.get('status'),
+                        updated_by=current_user.username,
+                        updated_date=datetime.utcnow()
+                    )
+                    db.add(stock_data)
+                    records_inserted += 1
+
+            except (ValueError, KeyError) as e:
+                # Skip invalid rows
+                continue
+
+        files_processed += 1
+
+    db.commit()
+    return {
+        "message": f"Successfully processed {files_processed} CSV files",
+        "files_processed": files_processed,
+        "records_inserted": records_inserted,
+        "records_updated": records_updated
+    }
 
 
 @app.get("/api/message", response_model=MessageResponse)
